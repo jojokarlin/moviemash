@@ -1,0 +1,147 @@
+#+title: Clean the movie titles
+#+author: Evan Misshula
+
+* Cheated I looked at this data in Emacs
+Looked at your data.  You have three types of data.
+
+1. Title (which contains commas)
+2. The release year of the picture (you don't care now but you might)
+3. The year it was reviewed. If it is the same as the release year it is not included.
+4 blank lines which we should clean.
+
+I am going to take care of each of these.
+* Titles have commas. Commas should not separate fields
+** I cheated I loaded this in Emacs
+- C - s (That means Control and s at the same time is search) type ','
+  and you wind up at:
+
+#+BEGIN_EXAMPLE
+Aguirre, the Wrath of God (1972, reviewed 1977)
+#+END_EXAMPLE
+
+- C - s (That means Control and s at the same time is search) type ';'
+  and you wind up at the end of the file
+
+** Continue cheating
+- In Emacs type: M - x linum-mode (That means Alt and x at the same
+  time. It means you are going to type a command).  This will give you
+  the line numbers.  There are only 978 lines in the file.  Too big to
+  correct by hand but you can look by hand.  This is how I saw you had
+  blank lines.
+
+** Get rid of the blanks
+
+- Search [[http://stackoverflow.com/questions/3711856/remove-empty-lines][stack overflow]]. If you click the link I found, you will see we can use it 
+to get rid of blank lines 
+#+BEGIN_SRC elisp
+;; active Babel languages
+(org-babel-do-load-languages
+ 'org-babel-load-languages
+ '((R . t)
+ (python . t)
+   (emacs-lisp . t)
+   ))
+#+END_SRC
+
+#+RESULTS:
+: ((R . t) (python . t) (emacs-lisp . t))
+
+1. use pandas read the data in raw
+2. turn it back into a python list
+3. create empty lists for title, review and release
+4. loop over the list of raw titles
+5. set up empty list for each title. this is called joTitleCandidate.
+6. set up empty list for each release. this is called joReleaseCandidate.
+7. set up empty list for each Review. this is called joReviewCandidate.
+8. split the raw title into a list of words called joSplit
+9. iterate through the words
+10. if the word does not contain '(' and we have not found '(' and it
+    is not a word in the parenthesis then and it to the list of words
+    in the processed title called joTitleCandidate.
+11. if we found '(' in this word check if it also contains ')'
+12. if it does contain both '(' and ')'then check if it is a digit. If
+    it is a digit also then it is the year of release and review.
+13. if it is not a digit then it is just a word in parenthesis. Add
+    that word to the title and set foundLeft=False.
+14. if we don't have both '(' and ')' in the same word then make a
+    list of all of the words to the end. This is called yearAndReview.
+15. Check if the releaseCan is actually a digit. if it is then it is
+    the release year. Set wordsInParen=True so we can ignore them.
+16. Check if the reviewCan is actually a digit. if it is then it is
+    the review year. Set wordsInParen=True so we can ignore them.
+17. if we got to the end and foundLeft == False then there was no
+    release and review year. Set them equal to np.nan.
+18. join the list of words into a string
+19. Append title, release and review to the appropriate list
+20. Create data series and data frame.
+
+
+
+#+BEGIN_SRC :session *py2* :output values :export both
+import pandas as pd
+import numpy as np
+import os
+
+rawMovies=pd.read_csv(filepath_or_buffer='movietitles.txt',
+                      sep=';')
+                      
+rawMoviesList=rawMovies.values.tolist()
+
+allTitles=[]
+allReleaseYears=[]
+allReviewYears=[]
+for outIndex,outvalue in enumerate(rawMoviesList):
+    joText=outvalue[0]
+
+    joTitleCandidate=[]
+    joReleaseYear=[]
+    joReviewYear=[]
+    wordsInParen=False
+    foundLeft=False
+
+    joSplit=joText.split(' ')
+
+    for index,value in enumerate(joSplit):
+        if ('(' not in value) and not foundLeft and not wordsInParen:
+            joTitleCandidate.append(value)
+        else:
+            foundLeft==True
+            if ')' in value:
+                if (value[1:(len(value)-1)].isdigit()):
+                    joReleaseYear.append(float(value[1:(len(value)-1)]))
+                    joReviewYear.append(float(value[1:(len(value)-1)]))
+                else:
+                    joTitleCandidate.append(value)
+                    foundLeft=False
+            else:
+                yearAndReview=joSplit[index:]
+                releaseCan=yearAndReview[0][1:-1]
+                reviewCan=yearAndReview[len(yearAndReview)-1][:-1]
+                if not wordsInParen:
+                    if (releaseCan.isdigit()):
+                        joReleaseYear.append(float(releaseCan))
+                        wordsInParen=True
+                    if (reviewCan.isdigit()):
+                        joReviewYear.append(float(reviewCan))
+                        wordsInParen=True
+        if (index==(len(joSplit)-1)):
+            if(foundLeft==False) and joReleaseYear==[]:
+                joReleaseYear=[np.nan]
+                joReviewYear=[np.nan]
+    joTitle=(' ').join(joTitleCandidate)
+    print("Title=%s" % joTitle)
+    print("Release year=%f" % joReleaseYear[0])
+    print("Review year=%f" % joReviewYear[0])
+    allTitles.append(joTitle)
+    allReleaseYears.append(joReleaseYear[0])
+    allReviewYears.append(joReviewYear[0])
+
+allTitlesSeries=pd.Series(data=allTitles,name='Titles')
+allReleaseYearsSeries=pd.Series(data=allReleaseYears,name='ReleaseYear')
+allReviewYearsSeries=pd.Series(data=allReviewYears,name='ReviewYear')
+
+movie=pd.DataFrame(allTitlesSeries)
+movie['releaseYear']=allReleaseYearsSeries
+movie['reviewYear']=allReviewYearsSeries
+#+END_SRC
+
